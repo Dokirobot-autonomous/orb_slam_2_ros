@@ -16,6 +16,14 @@ int main(int argc, char **argv)
     ros::NodeHandle node_handle;
     image_transport::ImageTransport image_transport (node_handle);
 
+    //// debug mode
+    bool debug=true;
+    if (debug) {
+        if (ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug)) {
+            ros::console::notifyLoggerLevelsChanged();
+        }
+    }
+
     // initialize
     StereoNode node (ORB_SLAM2::System::STEREO, node_handle, image_transport);
 
@@ -45,6 +53,9 @@ StereoNode::~StereoNode () {
 
 
 void StereoNode::ImageCallback (const sensor_msgs::ImageConstPtr& msgLeft, const sensor_msgs::ImageConstPtr& msgRight) {
+
+    ROS_DEBUG_STREAM("ImageCallback\n"<<msgLeft->header);
+
   cv_bridge::CvImageConstPtr cv_ptrLeft;
   try {
       cv_ptrLeft = cv_bridge::toCvShare(msgLeft);

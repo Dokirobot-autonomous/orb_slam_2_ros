@@ -164,13 +164,16 @@ void System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const do
     }
     }
 
-    cv::Mat Tcw = mpTracker->GrabImageStereo(imLeft,imRight,timestamp);
+//    cv::Mat Tcw = mpTracker->GrabImageStereo(imLeft,imRight,timestamp);
+    std::pair<cv::Mat,cv::Mat> mat_pair = mpTracker->GrabImageStereo(imLeft,imRight,timestamp);
 
     unique_lock<mutex> lock2(mMutexState);
     mTrackingState = mpTracker->mState;
     mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;
     mTrackedKeyPointsUn = mpTracker->mCurrentFrame.mvKeysUn;
-    current_position_ = Tcw;
+//    current_position_ = Tcw;
+    current_position_ = mat_pair.first;
+    current_covariance_ = mat_pair.second;
 }
 
 void System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp)
@@ -467,7 +470,11 @@ cv::Mat System::GetCurrentPosition () {
   return current_position_;
 }
 
-int System::GetTrackingState()
+cv::Mat System::GetCurrentCovariance () {
+    return current_covariance_;
+}
+
+    int System::GetTrackingState()
 {
     unique_lock<mutex> lock(mMutexState);
     return mTrackingState;

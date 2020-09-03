@@ -447,6 +447,18 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     cv::Mat pose = Converter::toCvMat(SE3quat_recov);
     pFrame->SetPose(pose);
 
+    // Compute covariance
+    cv::Mat_<float> hessian=cv::Mat_<float>::zeros(6,6);
+    for(int i=0;i<6;i++) {
+        for(int j=0;j<6;j++){
+            hessian(j,i)=(float)optimizer.vertex(0)->hessian(i,j);
+        }
+    }
+    cv::Mat_<float> hessian_inv=hessian.inv();
+    float orb_pose_covariance_gain=1.0;
+    float gain=orb_pose_covariance_gain;
+    pFrame->SetCovariance(hessian_inv*gain);
+
     return nInitialCorrespondences-nBad;
 }
 

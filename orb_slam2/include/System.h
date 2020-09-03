@@ -121,6 +121,7 @@ public:
     bool SaveMap(const string &filename);
 
     cv::Mat GetCurrentPosition ();
+    cv::Mat GetCurrentCovariance ();
 
     // Information from most recent processed frame
     // You can call this right after TrackMonocular (or stereo or RGBD)
@@ -199,6 +200,11 @@ private:
 
     // Current position
     cv::Mat current_position_;
+
+    // Current covariance
+    cv::Mat current_covariance_;
+
+
 
 };
 

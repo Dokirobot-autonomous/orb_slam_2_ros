@@ -40,7 +40,9 @@
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <nav_msgs/Odometry.h>
 #include <sensor_msgs/CameraInfo.h>
+#include <std_msgs/Float64.h>
 
 #include "System.h"
 
@@ -64,12 +66,14 @@ class Node
     void PublishMapPoints (std::vector<ORB_SLAM2::MapPoint*> map_points);
     void PublishPositionAsTransform (cv::Mat position);
     void PublishPositionAsPoseStamped(cv::Mat position);
+    void PublishOdometry(cv::Mat position, cv::Mat covariance);
     void PublishRenderedImage (cv::Mat image);
     void ParamsChangedCallback(orb_slam2_ros::dynamic_reconfigureConfig &config, uint32_t level);
     bool SaveMapSrv (orb_slam2_ros::SaveMap::Request &req, orb_slam2_ros::SaveMap::Response &res);
     void LoadOrbParameters (ORB_SLAM2::ORBParameters& parameters);
 
     tf::Transform TransformFromMat (cv::Mat position_mat);
+    std::vector<double> TransformFromCovMat (cv::Mat position_mat,cv::Mat covariance_mat);
     sensor_msgs::PointCloud2 MapPointsToPointCloud (std::vector<ORB_SLAM2::MapPoint*> map_points);
 
     dynamic_reconfigure::Server<orb_slam2_ros::dynamic_reconfigureConfig> dynamic_param_server_;
@@ -77,6 +81,7 @@ class Node
     image_transport::Publisher rendered_image_publisher_;
     ros::Publisher map_points_publisher_;
     ros::Publisher pose_publisher_;
+    ros::Publisher odom_publisher_;
 
     ros::ServiceServer service_server_;
 

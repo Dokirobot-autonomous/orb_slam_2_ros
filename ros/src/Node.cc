@@ -1,6 +1,7 @@
 #include "Node.h"
 
 #include <iostream>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 
 Node::Node (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &node_handle, image_transport::ImageTransport &image_transport) :  image_transport_(image_transport) {
   name_of_node_ = ros::this_node::getName();
@@ -51,19 +52,23 @@ void Node::Init () {
 
   // Enable publishing camera's pose as PoseStamped message
   if (publish_pose_param_) {
-    pose_publisher_ = node_handle_.advertise<geometry_msgs::PoseStamped> (name_of_node_+"/pose", 1);
+    pose_publisher_ = node_handle_.advertise<geometry_msgs::PoseWithCovarianceStamped> (name_of_node_+"/pose", 1);
+    odom_publisher_ = node_handle_.advertise<nav_msgs::Odometry>(name_of_node_+"/odom",1);
   }
+
 }
 
 
 void Node::Update () {
   cv::Mat position = orb_slam_->GetCurrentPosition();
+  cv::Mat covariance = orb_slam_->GetCurrentCovariance();
 
   if (!position.empty()) {
     PublishPositionAsTransform (position);
 
     if (publish_pose_param_) {
       PublishPositionAsPoseStamped (position);
+      PublishOdometry(position,covariance);
     }
   }
 
@@ -91,13 +96,33 @@ void Node::PublishPositionAsTransform (cv::Mat position) {
 }
 
 void Node::PublishPositionAsPoseStamped (cv::Mat position) {
+/*
   tf::Transform grasp_tf = TransformFromMat (position);
   tf::Stamped<tf::Pose> grasp_tf_pose(grasp_tf, current_frame_time_, map_frame_id_param_);
-  geometry_msgs::PoseStamped pose_msg;
+  geometry_msgs::PoseWithCovarianceStamped pose_msg;
   tf::poseStampedTFToMsg (grasp_tf_pose, pose_msg);
   pose_publisher_.publish(pose_msg);
+*/
 }
 
+void Node::PublishOdometry (cv::Mat position, cv::Mat covariance) {
+    tf::Transform grasp_tf = TransformFromMat (position);
+    tf::Stamped<tf::Pose> grasp_tf_pose(grasp_tf, current_frame_time_, map_frame_id_param_);
+    geometry_msgs::PoseStamped pose_msg;
+    tf::poseStampedTFToMsg (grasp_tf_pose, pose_msg);
+    std::vector<double> cov_array=TransformFromCovMat(position,covariance);
+    nav_msgs::Odometry odom_msg;
+    odom_msg.header=pose_msg.header;
+    odom_msg.pose.pose=pose_msg.pose;
+    for(int i=0;i<36;i++){
+        odom_msg.pose.covariance[i]=cov_array[i];
+    }
+    odom_publisher_.publish(odom_msg);
+    geometry_msgs::PoseWithCovarianceStamped posecov_msg;
+    posecov_msg.header=pose_msg.header;
+    posecov_msg.pose=odom_msg.pose;
+    pose_publisher_.publish(posecov_msg);
+}
 
 void Node::PublishRenderedImage (cv::Mat image) {
   std_msgs::Header header;
@@ -141,6 +166,107 @@ tf::Transform Node::TransformFromMat (cv::Mat position_mat) {
   tf_camera_translation = tf_orb_to_ros*tf_camera_translation;
 
   return tf::Transform (tf_camera_rotation, tf_camera_translation);
+}
+
+
+/*
+std::vector<double> Node::TransformFromCovMat (cv::Mat position_mat,cv::Mat covariance_mat) {
+
+    if(covariance_mat.empty()){
+        return std::vector<double>(36,0.0);
+    }
+
+    cv::Mat rotation(3,3,CV_32F);
+    cv::Mat translation(3,1,CV_32F);
+
+//    cv::Mat tf_orb_to_ros(6,6,CV_32F);
+    cv::Mat tf_orb_to_ros = (cv::Mat_<float>(6,6) <<
+            0, 0, 1, 0, 0, 0,
+            -1, 0, 0, 0, 0, 0,
+            0, -1, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 1,
+            0, 0, 0, -1, 0, 0,
+            0, 0, 0, 0, -1, 0);
+
+    //// TODO: 座標変換を修正
+    //Transform from orb coordinate system to ros coordinate system on camera coordinates
+    cv::Mat tf_camera_covariance=tf_orb_to_ros*covariance_mat*tf_orb_to_ros.t();
+
+    std::vector<double> array(36);
+    for(int i=0;i<6;i++){
+        for(int j=0;j<6;j++){
+            array[i*6+j]=tf_camera_covariance.at<float>(j,i);
+        }
+    }
+
+    return array;
+}
+*/
+std::vector<double> Node::TransformFromCovMat (cv::Mat position_mat,cv::Mat covariance_mat) {
+
+    if(covariance_mat.empty()){
+        return std::vector<double>(36,0.0);
+    }
+
+    cv::Mat rotation(3,3,CV_32F);
+    cv::Mat translation(3,1,CV_32F);
+
+    rotation = position_mat.rowRange(0,3).colRange(0,3);
+    translation = position_mat.rowRange(0,3).col(3);
+
+
+    tf::Matrix3x3 tf_camera_rotation (rotation.at<float> (0,0), rotation.at<float> (0,1), rotation.at<float> (0,2),
+                                      rotation.at<float> (1,0), rotation.at<float> (1,1), rotation.at<float> (1,2),
+                                      rotation.at<float> (2,0), rotation.at<float> (2,1), rotation.at<float> (2,2)
+    );
+
+    tf::Vector3 tf_camera_translation (translation.at<float> (0), translation.at<float> (1), translation.at<float> (2));
+
+    //Coordinate transformation matrix from orb coordinate system to ros coordinate system
+    const tf::Matrix3x3 tf_orb_to_ros (0, 0, 1,
+                                       -1, 0, 0,
+                                       0,-1, 0);
+
+    //Transform from orb coordinate system to ros coordinate system on camera coordinates
+    tf_camera_rotation = tf_orb_to_ros*tf_camera_rotation;
+    tf_camera_translation = tf_orb_to_ros*tf_camera_translation;
+
+    //Inverse matrix
+    tf_camera_rotation = tf_camera_rotation.transpose();
+    tf_camera_translation = -(tf_camera_rotation*tf_camera_translation);
+
+//    cv::Mat tf_orb_to_ros(6,6,CV_32F);
+    cv::Mat tf_orb_to_ros6 = (cv::Mat_<float>(6,6) <<
+            0, 0, 1, 0, 0, 0,
+            -1, 0, 0, 0, 0, 0,
+            0, -1, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 1,
+            0, 0, 0, -1, 0, 0,
+            0, 0, 0, 0, -1, 0);
+
+    //// TODO: 座標変換を修正
+    //Transform from orb coordinate system to ros coordinate system on camera coordinates
+    cv::Mat tf_camera_covariance=tf_orb_to_ros6*covariance_mat*tf_orb_to_ros6.t();
+    //Inverse matrix
+    cv::Mat tf_camera_rotation_6 = (cv::Mat_<float>(6,6) <<
+            tf_camera_rotation.getRow(0).getX(), tf_camera_rotation.getRow(0).getY(), tf_camera_rotation.getRow(0).getZ(), 0, 0, 0,
+            tf_camera_rotation.getRow(1).getX(), tf_camera_rotation.getRow(1).getY(), tf_camera_rotation.getRow(1).getZ(), 0, 0, 0,
+            tf_camera_rotation.getRow(2).getX(), tf_camera_rotation.getRow(2).getY(), tf_camera_rotation.getRow(2).getZ(), 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0);
+    tf_camera_covariance=tf_camera_rotation_6*tf_camera_covariance*tf_camera_rotation_6.t();
+    //Transform from orb coordinate system to ros coordinate system on map coordinates
+    tf_camera_covariance=tf_orb_to_ros6*tf_camera_covariance*tf_orb_to_ros6.t();
+
+    std::vector<double> array(36);
+    for(int i=0;i<6;i++){
+        for(int j=0;j<6;j++){
+            array[i*6+j]=tf_camera_covariance.at<float>(j,i);
+        }
+    }
+
+    return array;
 }
 
 
