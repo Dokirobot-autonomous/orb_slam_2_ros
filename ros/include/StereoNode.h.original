@@ -1,0 +1,99 @@
+#pragma once
+
+#include <iostream>
+#include <algorithm>
+#include <fstream>
+#include <chrono>
+#include <opencv2/imgproc/imgproc_c.h>
+#include <opencv2/core/types.hpp>
+
+
+#include <ros/ros.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/core/core.hpp>
+#include <tf/transform_broadcaster.h>
+
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+
+#include "System.h"
+#include "Node.h"
+
+class StereoNode : public Node
+{
+  public:
+    StereoNode (const ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &node_handle, image_transport::ImageTransport &image_transport);
+    ~StereoNode ();
+    void ImageCallback (const sensor_msgs::ImageConstPtr& msgLeft,const sensor_msgs::ImageConstPtr& msgRight);
+    static void initialpose_callback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &input) {
+        tf::TransformListener listener;
+        tf::StampedTransform transform;
+        std::cout << "call 2D pose estimate" << std::endl;
+        try {
+            ros::Time now = ros::Time(0);
+            listener.waitForTransform("map", input->header.frame_id, now, ros::Duration(10.0));
+            listener.lookupTransform("map", input->header.frame_id, now, transform);
+        }
+        catch (tf::TransformException &ex) {
+            ROS_ERROR("%s", ex.what());
+        }
+
+        tf::Quaternion q(input->pose.pose.orientation.x, input->pose.pose.orientation.y, input->pose.pose.orientation.z,
+                         input->pose.pose.orientation.w);
+        tf::Matrix3x3 m(q);
+
+        g_ini_x = input->pose.pose.position.x + transform.getOrigin().x();
+        g_ini_y = input->pose.pose.position.y + transform.getOrigin().y();
+        g_ini_z = input->pose.pose.position.z + transform.getOrigin().z();
+
+        m.getRPY(g_ini_roll, g_ini_pitch, g_ini_yaw);
+
+        // global(map) to local(map center)
+        Eigen::Translation3f translation(g_ini_x, g_ini_y, g_ini_z);
+        Eigen::AngleAxisf rotation_x(g_ini_roll, Eigen::Vector3f::UnitX());
+        Eigen::AngleAxisf rotation_y(g_ini_pitch, Eigen::Vector3f::UnitY());
+        Eigen::AngleAxisf rotation_z(g_ini_yaw, Eigen::Vector3f::UnitZ());
+        Eigen::Matrix4f global_t = (translation * rotation_z * rotation_y * rotation_x).matrix();
+        Eigen::Matrix4f local_t = tf_global_to_local * global_t;
+
+        tf::Quaternion q_g_to_l;
+        tf::Matrix3x3 mat_g;
+        mat_g.setValue(
+                static_cast<double>(local_t(0, 0)), static_cast<double>(local_t(0, 1)), static_cast<double>(local_t(0, 2)),
+                static_cast<double>(local_t(1, 0)), static_cast<double>(local_t(1, 1)), static_cast<double>(local_t(1, 2)),
+                static_cast<double>(local_t(2, 0)), static_cast<double>(local_t(2, 1)), static_cast<double>(local_t(2, 2)));
+
+        mat_g.getRotation(q_g_to_l);
+
+        prev_pose.x = local_t(0, 3);
+        prev_pose.y = local_t(1, 3);
+        prev_pose.z = local_t(2, 3);
+        prev_pose.theta = q_g_to_l.x();
+        prev_pose.theta2 = q_g_to_l.y();
+        prev_pose.theta3 = q_g_to_l.z();
+
+        std::cout << "(x,y,z,roll,pitch,yaw):" << std::endl;
+        std::cout << "(" << prev_pose.x << ", " << prev_pose.y << ", " << prev_pose.z << ", " << prev_pose.theta << ", "
+                  << prev_pose.theta2 << ", "
+                  << prev_pose.theta3 << ")" << std::endl;
+
+
+        prev_pose2 = prev_pose;
+    }
+
+
+private:
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
+    message_filters::Subscriber<sensor_msgs::Image> *left_sub_;
+    message_filters::Subscriber<sensor_msgs::Image> *right_sub_;
+    message_filters::Synchronizer<sync_pol> *sync_;
+    ros::Subscriber sub_initialpose;
+
+    int resize_horizontal;
+    int resize_vertical;
+};
+

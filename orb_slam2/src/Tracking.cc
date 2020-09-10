@@ -300,6 +300,8 @@ void Tracking::Track()
 
     if(mState==NOT_INITIALIZED)
     {
+        //// initialposeがfalseなら，ここでreturnする
+
         if(mSensor==System::STEREO || mSensor==System::RGBD)
             StereoInitialization();
         else
@@ -504,7 +506,7 @@ void Tracking::Track()
         if(!mCurrentFrame.mpReferenceKF)
             mCurrentFrame.mpReferenceKF = mpReferenceKF;
 
-        mLastFrame = Frame(mCurrentFrame);
+        mLastFrame = Frame(mCurrentFrame); // Note: copy current frame to previous
     }
 
     // Store frame pose information to retrieve the complete camera trajectory afterwards.
@@ -527,9 +529,12 @@ void Tracking::Track()
 
 }
 
-
+//// TODO: initial poseをうけとったら，　起動するようにする
+//// TODO: initialposeのうけをうけとるまでは，　poseをsetしないようにする
 void Tracking::StereoInitialization()
 {
+        //// Note: Stereo Initialization
+
     if(mCurrentFrame.N>500)
     {
         // Set Frame pose to the origin
@@ -792,9 +797,13 @@ bool Tracking::TrackReferenceKeyFrame()
         return false;
 
     mCurrentFrame.mvpMapPoints = vpMapPointMatches;
-    mCurrentFrame.SetPose(mLastFrame.mTcw);
+    mCurrentFrame.SetPose(mLastFrame.mTcw); // Note: copy the last pose to current pose
+
+    std::cout<<mCurrentFrame.mTcw<<std::endl; // ここが最初に起動するかどうか
 
     Optimizer::PoseOptimization(&mCurrentFrame);
+
+    std::cout<<mCurrentFrame.mTcw<<std::endl; // ここが最初に起動するかどうか
 
     // Discard outliers
     int nmatchesMap = 0;

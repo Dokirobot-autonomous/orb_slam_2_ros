@@ -2,6 +2,7 @@
 <launch>
     <arg name="localize_only" default="false"/>
     <arg name="load_map" default="false"/>
+    <arg name="map_file" default="map/orbmap.bin" />
 
 <!--    <node pkg="tf" type="static_transform_publisher" name="map2camera_init" args="0.334 0.041 -0.075 0.0 0.0 0.0 /map /camera_init 100"/>-->
     <node pkg="tf2_ros" type="static_transform_publisher" name="map2camera_init" args="0.334 0.041 -0.075 0.0 0.0 0.0 map camera_init" />
@@ -19,7 +20,7 @@
 
         <!-- static parameters -->
         <param name="load_map" type="bool" value="$(arg load_map)"/>
-        <param name="map_file" type="string" value="map/orbmap.bin"/>
+        <param name="map_file" type="string" value="$(arg map_file)"/>
         <param name="voc_file" type="string" value="$(find orb_slam2_ros)/orb_slam2/Vocabulary/ORBvoc.txt"/>
 
         <param name="pointcloud_frame_id" type="string" value="camera_init"/>

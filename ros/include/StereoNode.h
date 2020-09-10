@@ -18,6 +18,8 @@
 #include <opencv2/core/core.hpp>
 #include <tf/transform_broadcaster.h>
 
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+
 #include "System.h"
 #include "Node.h"
 
@@ -27,12 +29,17 @@ class StereoNode : public Node
     StereoNode (const ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &node_handle, image_transport::ImageTransport &image_transport);
     ~StereoNode ();
     void ImageCallback (const sensor_msgs::ImageConstPtr& msgLeft,const sensor_msgs::ImageConstPtr& msgRight);
+/*
+    void InitialposeCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg);
+*/
+
 
 private:
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
     message_filters::Subscriber<sensor_msgs::Image> *left_sub_;
     message_filters::Subscriber<sensor_msgs::Image> *right_sub_;
     message_filters::Synchronizer<sync_pol> *sync_;
+    ros::Subscriber sub_initialpose;
 
     int resize_horizontal;
     int resize_vertical;
